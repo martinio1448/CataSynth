@@ -27,7 +27,7 @@ class UNet(nn.Module):
         if model_config['TYPE'] == 'bayesian':
             self.logvar = nn.Parameter(torch.zeros(num_timesteps))
 
-        # Timestep embedding
+        # Timestep embedding = temb
         self.ch = ch
         self.temb_ch = self.ch * 4
         self.temb = nn.Module()

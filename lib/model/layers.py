@@ -27,6 +27,26 @@ def get_timestep_embedding(timesteps, embedding_dim):
         emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
     return emb
 
+class ColorCycleEmbedding(nn.Module):
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
+        self.activ = torch.nn.ReLU()
+
+    def forward(self, x: torch.Tensor):
+        half_dim = self.dim // 2
+        emb = x
+        
+        sin_part = torch.sin(emb)[:, None].repeat(1, half_dim)
+        cos_part = torch.cos(emb)[:, None].repeat(1, half_dim)
+        
+        emb = torch.cat((sin_part, cos_part), dim=1)
+
+        if self.dim % 2 == 1:  # zero pad
+            emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
+        
+        ret = self.activ(emb)
+        return ret
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):

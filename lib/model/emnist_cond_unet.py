@@ -1,35 +1,47 @@
 import torch
 import torch.nn as nn
-from lib.model.layers import nonlinearity, get_timestep_embedding
+from lib.model.layers import nonlinearity, get_timestep_embedding, ColorCycleEmbedding
 
 from .unet import UNet
 
 
-class ConditionalUNet(UNet):
+class ConditionalEMNISTUNet(UNet):
 
     def __init__(self,
                  data_config: dict,
                  model_config: dict,
                  diffusion_config: dict,
-                 num_phase_labels: int = None,
-                 num_semantic_labels: int = None):
+                 num_classes: int = None,
+                
+                 ):
 
-        super(ConditionalUNet, self).__init__(data_config, model_config, diffusion_config)
+        super(ConditionalEMNISTUNet, self).__init__(data_config, model_config, diffusion_config)
 
         #Embedding for phase
-        if num_phase_labels is not None:
-            self.phase_label_embedding = nn.Embedding(num_embeddings=num_phase_labels, embedding_dim=self.temb_ch)
+        if num_classes is not None:
+            self.label_embedding = nn.Embedding(num_embeddings=num_classes, embedding_dim=self.temb_ch)
+
+
+        #Embedding for colorCycle
+        self.colorcycle_label_embedding = ColorCycleEmbedding(self.ch)
+        self.colorcycle_label_embedding_dense = nn.ModuleList([
+            torch.nn.Linear(self.ch,
+                            self.temb_ch),
+            torch.nn.Linear(self.temb_ch,
+                            self.temb_ch),
+        ])
+
 
         #Embedding for tool
-        if num_semantic_labels is not None:
-            self.semantic_label_embedding = nn.ModuleList([
-                torch.nn.Linear(num_semantic_labels,
-                                self.temb_ch),
-                torch.nn.Linear(self.temb_ch,
-                                self.temb_ch),
-            ])
+        # if num_semantic_labels is not None:
+        #     self.semantic_label_embedding = nn.ModuleList([
+        #         torch.nn.Linear(num_semantic_labels,
+        #                         self.temb_ch),
+        #         torch.nn.Linear(self.temb_ch,
+        #                         self.temb_ch),
+        #     ])
 
-    def forward(self, x, t, mask=None, phase_y=None, tool_y=None):
+    def forward(self, x, t, mask=None, label=None, current_color_cycle=None):
 
         assert x.shape[2] == x.shape[3] == self.data_shape[-1]
 
@@ -40,16 +52,17 @@ class ConditionalUNet(UNet):
         time_emb = self.temb.dense[1](time_emb)
 
         # Append label embedding to timestep embedding
-        if phase_y is not None:
+        if label is not None:
             # Reshaping phase label embedding to one dim
-            time_emb += self.phase_label_embedding(phase_y.squeeze(-1))
+            time_emb += self.label_embedding(label.squeeze(-1))
 
-        #Append toolset embedding to prev embedding
-        if tool_y is not None:
-            semantic_emb = self.semantic_label_embedding[0](tool_y)
-            nonlinearity(semantic_emb)
-            semantic_emb = self.semantic_label_embedding[1](semantic_emb)
-            time_emb += semantic_emb
+        #Append colorcycle embedding to prev embedding
+        if current_color_cycle is not None:
+            cycle_emb = self.colorcycle_label_embedding(current_color_cycle.squeeze())
+            cycle_emb = self.colorcycle_label_embedding_dense[0](cycle_emb)
+            nonlinearity(cycle_emb)
+            cycle_emb = self.colorcycle_label_embedding_dense[1](cycle_emb)
+            time_emb += cycle_emb
 
         # Downsampling
         hs = [self.conv_in(x)]

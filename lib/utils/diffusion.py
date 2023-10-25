@@ -107,8 +107,9 @@ def ddpm_steps(x: torch.Tensor,
             # Conditional sampling
             if kwargs.get('guidance'):
                 guidance_strength = kwargs.get('guidance_strength')
+                ##TODO: GENERALIZE THIS TO DEAL WITH DIFFERENT CONDITIONING TYPES!
                 e_conditional = model(x, t.float(),
-                                      phase_y=kwargs.get('phase_label'), tool_y=kwargs.get('semantic_label'))
+                                      label=kwargs.get('label'), current_color_cycle=kwargs.get('current_color_cycle'))
                 e = (1 + guidance_strength) * e_conditional - guidance_strength * e
 
             x0_from_e = (1.0 / at).sqrt() * x - (1.0 / at - 1).sqrt() * e

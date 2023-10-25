@@ -1,12 +1,49 @@
 import albumentations as A
 import torch.optim
+import numpy as np
 from torch.utils.data import DataLoader, WeightedRandomSampler, Subset
 
 from lib.dataset.cataracts_dataset import CATARACTSDataset
 from lib.dataset.synthetic_dataset import SyntheticCATARACTSDataset
 from lib.dataset.lmdb_dataset import LMDB_Dataset
 from lib.model.phase_classifier import PhaseClassifier, FullyConvClassifier
+from torchvision.datasets import EMNIST
+from torchvision import transforms
+from lib.augmentations.expand_to_rgb import ExpandToRGB
+from lib.augmentations.cycle_color import CycleColor
 
+
+def get_MNIST_data(args, data_conf, train_conf, path: str):
+    t = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((32,32)),
+        CycleColor(epoch=0,cycle=100, background_tolerance=0.08, generation_range=99)
+    ])
+    ds = EMNIST(path, split="digits", download=True, transform=t)
+
+    if data_conf['FOLD'] >= 0:
+        train_ids, val_ids = get_fold(ds, idx=data_conf['FOLD'], n_folds=5)
+        _train_ds = Subset(ds, indices=train_ids)
+    else:
+        train_ids, val_ids = get_fold(ds, idx=0, n_folds=5)
+        _train_ds = Subset(ds, indices=train_ids)
+
+    train_dl = DataLoader(_train_ds, batch_size=train_conf['BATCH_SIZE'], num_workers=train_conf['NUM_WORKERS'],
+                              drop_last=True, shuffle=True, pin_memory=False)
+
+    _val_ds = Subset(ds, indices=val_ids)
+    
+    val_dl = DataLoader(_val_ds, batch_size=train_conf['VAL_SAMPLES'], num_workers=train_conf['NUM_WORKERS'],
+                        sampler=None, drop_last=True, shuffle=True, pin_memory=False)
+
+    return _train_ds, train_dl, _val_ds, val_dl
+
+def get_fold(ds, idx: int, n_folds: int = 5):
+        all_ids = np.arange(0, len(ds))
+        splits = np.array_split(all_ids, indices_or_sections=n_folds)
+        val_ids = splits[idx]
+        train_ids = np.concatenate([splits[i] for i in np.delete(np.arange(0, n_folds), idx)])
+        return train_ids, val_ids
 
 def get_CATARACTS_data(args, data_conf, train_conf):
     train_ds = CATARACTSDataset(
